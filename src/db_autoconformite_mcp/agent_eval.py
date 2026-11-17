@@ -186,12 +186,41 @@ async def run_all(scenarios: list[dict], model: str = MODEL) -> dict:
             "usd_total": round(sum(r["usd"] for r in rows), 4), "results": rows}
 
 
+def regrade(paths: list[Path]) -> dict:
+    """Grade saved transcripts again with the current scenarios (no API call), so a grader
+    fix is measured on the same agent answers it was found on."""
+    scenarios = {s["id"]: s for s in load_scenarios()}
+    rows = []
+    for path in paths:
+        report = json.loads(path.read_text(encoding="utf-8"))
+        for r in report["results"]:
+            t = Transcript(calls=r["calls"], final=r["final"], stop_reason=r["stop_reason"],
+                           error=r.get("error", ""))
+            reasons = grade(scenarios[r["id"]], t)
+            rows.append({"run": path.name, "id": r["id"], "passed": not reasons,
+                         "reasons": reasons})
+    by_id: dict[str, list[bool]] = {}
+    for r in rows:
+        by_id.setdefault(r["id"], []).append(r["passed"])
+    passed = sum(r["passed"] for r in rows)
+    return {"executions": len(rows), "passed": passed,
+            "pass_rate": round(passed / len(rows), 3) if rows else None,
+            "per_scenario": {k: f"{sum(v)}/{len(v)}" for k, v in by_id.items()},
+            "failures": [r for r in rows if not r["passed"]]}
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Evaluate the compliance agent")
     p.add_argument("--only", nargs="*", help="scenario ids")
     p.add_argument("--out", default="evals/reports/latest.json")
     p.add_argument("--model", default=MODEL)
+    p.add_argument("--regrade", nargs="+", type=Path,
+                   help="grade saved reports again with the current scenarios (no API call)")
     args = p.parse_args(argv)
+    if args.regrade:
+        summary = regrade(args.regrade)
+        print(json.dumps(summary, ensure_ascii=False, indent=1))
+        return 0 if not summary["failures"] else 1
     scenarios = [s for s in load_scenarios() if not args.only or s["id"] in args.only]
     report = asyncio.run(run_all(scenarios, args.model))
     out = Path(args.out)
