@@ -8,3 +8,4 @@ audit/
 fleet/backups.jsonl
 reports/
 ansible/generated/
+evals/reports/

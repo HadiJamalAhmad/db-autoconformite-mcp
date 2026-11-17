@@ -1,6 +1,6 @@
 """Cross-check two independent tools: what Ansible would change vs what fleetctl reports.
 
-    ANSIBLE_STDOUT_CALLBACK=ansible.builtin.json ansible-playbook ... --check > ansible.json
+    ANSIBLE_STDOUT_CALLBACK=ansible.posix.json ansible-playbook ... --check > ansible.json
     uv run fleetctl check --format json > fleet.json
     uv run python -m db_autoconformite_mcp.ansible_crosscheck ansible.json fleet.json
 

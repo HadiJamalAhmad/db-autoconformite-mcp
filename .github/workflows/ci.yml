@@ -112,12 +112,12 @@ jobs:
       - name: Ansible and the PostgreSQL collection (pinned)
         run: |
           uv tool install ansible-core==2.20.11 --with psycopg2-binary==2.9.13 --python 3.12
-          ansible-galaxy collection install community.postgresql:==5.1.0
+          ansible-galaxy collection install community.postgresql:==5.1.0 ansible.posix:==2.2.2
           echo "ANSIBLE_PY=$(uv tool dir)/ansible-core/bin/python" >> "$GITHUB_ENV"
       - run: uv run fleetctl ansible-export
       - name: 1. Playbook in check mode
         run: |
-          ANSIBLE_STDOUT_CALLBACK=ansible.builtin.json ansible-playbook \
+          ANSIBLE_STDOUT_CALLBACK=ansible.posix.json ansible-playbook \
             -i ansible/generated/inventory.yml ansible/standard-config.yml --check \
             -e ansible_python_interpreter="$ANSIBLE_PY" > ansible-check.json
       - name: 2. Cross-check Ansible against fleetctl
