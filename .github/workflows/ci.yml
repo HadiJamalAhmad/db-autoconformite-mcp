@@ -1,0 +1,124 @@
+# Intégration continue et auto-conformité.
+#
+#   test      lint (ruff) + tests unitaires et protocole MCP, sans base de données
+#   security  scan de secrets sur tout l'historique (gitleaks) + audit des dépendances (pip-audit)
+#   fleet     le parc PostgreSQL réel (docker compose) : tests d'intégration, rapport de
+#             conformité publié, et preuve que le contrôle BLOQUE sur les dérives volontaires
+#   oracle    Oracle Database Free : le collecteur Oracle et les règles contre une vraie base
+#
+# Planifié chaque nuit : la conformité est vérifiée même quand personne ne pousse de code.
+name: ci
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 3 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run pytest -q
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv export --frozen --no-hashes --no-emit-project -o requirements.txt
+      - run: uvx pip-audit -r requirements.txt --strict
+
+  fleet:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - name: Random credentials for this run only
+        run: |
+          for name in POSTGRES_PASSWORD AUTOCONF_PG_PASSWORD; do
+            value=$(openssl rand -hex 16)
+            echo "::add-mask::$value"
+            printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
+          done
+      - run: docker compose -f fleet/compose.yaml up -d --wait
+      - run: uv run python fleet/seed_backups.py
+      - run: uv run pytest -q -m integration
+      - name: Compliance report
+        run: |
+          uv run fleetctl check --format markdown > report.md || true
+          uv run fleetctl correlate > correlation.txt || true
+          { echo "## Rapport de conformité"; cat report.md; echo; echo '```';
+            cat correlation.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: The compliance gate blocks the deliberate drifts
+        run: |
+          if uv run fleetctl check --fail-on high > /dev/null; then
+            echo "::error::the gate let a drifted fleet through"; exit 1
+          fi
+          echo "gate blocked as expected"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compliance-report
+          path: |
+            report.md
+            correlation.txt
+
+  oracle:
+    needs: test
+    runs-on: ubuntu-latest
+    services:
+      oracle:
+        image: gvenzl/oracle-free:23.9-slim-faststart
+        env:
+          # Throwaway container, reachable only from this runner, destroyed after the job.
+          ORACLE_PASSWORD: ci-${{ github.run_id }}-${{ github.run_attempt }}
+        ports:
+          - 1521:1521
+        options: >-
+          --health-cmd healthcheck.sh --health-interval 10s --health-timeout 5s
+          --health-retries 30
+    env:
+      ORACLE_PASSWORD: ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - name: Monitoring account and deliberate drift
+        run: |
+          value=$(openssl rand -hex 16)
+          echo "::add-mask::$value"
+          printf 'AUTOCONF_ORA_PASSWORD=%s\n' "$value" >> "$GITHUB_ENV"
+          AUTOCONF_ORA_PASSWORD="$value" uv run python fleet/oracle/setup_ci.py
+      - run: uv run pytest -q -m integration -k oracle
+      - name: Oracle compliance report
+        env:
+          AUTOCONF_INVENTORY: fleet/oracle/inventory.yaml
+        run: |
+          uv run fleetctl check --format markdown | tee -a "$GITHUB_STEP_SUMMARY"
+          uv run fleetctl plan ora-ci-01

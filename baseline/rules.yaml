@@ -1,0 +1,103 @@
+# Référentiel de conformité du parc de bases de données.
+#
+# Chaque règle vérifie un fait neutre (indépendant du moteur) produit par les collecteurs.
+# `source` dit où le fait est lu pour chaque moteur ; `remediation` propose la correction,
+# qui n'est JAMAIS appliquée automatiquement : elle est remise à un humain pour validation.
+
+rules:
+  - id: R01
+    title: Journalisation des connexions
+    severity: medium
+    check: equals
+    fact: log_connections
+    expected: "on"
+    rationale: >
+      Sans trace des connexions, une intrusion ou un accès anormal ne peut pas être
+      reconstitué. Exigence de traçabilité des accès.
+    source:
+      postgresql: paramètre log_connections
+      oracle: une politique d'audit unifié activée qui audite l'action LOGON
+    remediation:
+      postgresql: "ALTER SYSTEM SET log_connections = 'on'; SELECT pg_reload_conf();"
+      oracle: "AUDIT POLICY ORA_LOGON_FAILURES; -- ou une politique qui audite LOGON"
+
+  - id: R02
+    title: Archivage des journaux de transactions
+    severity: high
+    check: equals
+    fact: archiving
+    expected: "on"
+    rationale: >
+      Sans archivage, une restauration à un instant donné (PITR) est impossible :
+      on perd toutes les transactions depuis la dernière sauvegarde complète.
+    source:
+      postgresql: paramètre archive_mode
+      oracle: V$DATABASE.LOG_MODE (ARCHIVELOG)
+    remediation:
+      postgresql: "ALTER SYSTEM SET archive_mode = 'on'; -- redémarrage requis, définir archive_command"
+      oracle: "SHUTDOWN IMMEDIATE; STARTUP MOUNT; ALTER DATABASE ARCHIVELOG; ALTER DATABASE OPEN; -- fenêtre de maintenance requise"
+
+  - id: R03
+    title: Hachage robuste des mots de passe
+    severity: high
+    check: equals
+    fact: password_hashing
+    expected: strong
+    rationale: >
+      Un hachage faible (MD5 côté PostgreSQL, vérificateur 10G côté Oracle) se casse
+      rapidement si les empreintes fuient.
+    source:
+      postgresql: paramètre password_encryption (scram-sha-256 attendu)
+      oracle: DBA_USERS.PASSWORD_VERSIONS (aucun vérificateur 10G sur les comptes applicatifs)
+    remediation:
+      postgresql: "ALTER SYSTEM SET password_encryption = 'scram-sha-256'; SELECT pg_reload_conf(); -- puis réinitialiser les mots de passe"
+      oracle: "-- sqlnet.ora : SQLNET.ALLOWED_LOGON_VERSION_SERVER = 12a ; puis réinitialiser les mots de passe concernés"
+
+  - id: R04
+    title: Comptes à privilèges maîtrisés
+    severity: critical
+    check: subset_of_allowed
+    fact: privileged_accounts
+    rationale: >
+      Tout compte superutilisateur ou DBA hors de la liste autorisée de l'instance est un
+      accès incontrôlé à l'ensemble des données.
+    source:
+      postgresql: pg_roles.rolsuper
+      oracle: DBA_ROLE_PRIVS (rôle DBA), hors comptes maintenus par Oracle
+    remediation:
+      postgresql: "ALTER ROLE {account} NOSUPERUSER;"
+      oracle: "REVOKE DBA FROM {account};"
+
+  - id: R05
+    title: Sauvegarde récente
+    severity: high
+    check: max_age_hours
+    fact: last_backup_at
+    max_age_hours:
+      production: 24
+      recette: 168
+    rationale: >
+      Une base de production sans sauvegarde récente expose à une perte de données
+      supérieure à l'objectif de point de reprise (RPO).
+    source:
+      postgresql: journal de l'outil de sauvegarde (source externe corrélée)
+      oracle: V$RMAN_BACKUP_JOB_DETAILS (dernière sauvegarde RMAN terminée)
+    remediation:
+      postgresql: "-- lancer une sauvegarde complète et vérifier la planification de l'outil de sauvegarde"
+      oracle: "RMAN> BACKUP DATABASE PLUS ARCHIVELOG; -- vérifier la planification"
+
+  - id: R06
+    title: Délai d'inactivité des sessions
+    severity: low
+    check: equals
+    fact: idle_timeout
+    expected: enabled
+    rationale: >
+      Une session inactive sans délai garde des verrous et des ressources, et reste une
+      porte ouverte si le poste de l'utilisateur est compromis.
+    source:
+      postgresql: paramètre idle_in_transaction_session_timeout (supérieur à 0)
+      oracle: DBA_PROFILES, ressource IDLE_TIME du profil DEFAULT (différente d'UNLIMITED)
+    remediation:
+      postgresql: "ALTER SYSTEM SET idle_in_transaction_session_timeout = '10min'; SELECT pg_reload_conf();"
+      oracle: "ALTER PROFILE DEFAULT LIMIT IDLE_TIME 30;"

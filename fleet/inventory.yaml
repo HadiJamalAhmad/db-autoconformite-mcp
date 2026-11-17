@@ -1,0 +1,46 @@
+# Export de la CMDB : le parc de bases tel que l'entreprise le déclare.
+# Le périmètre de conformité : les bases qui ne sont pas natives du cloud public (hosting != cloud).
+instances:
+  - id: pg-prod-01
+    engine: postgresql
+    host: 127.0.0.1
+    port: 5433
+    service: postgres
+    environment: production
+    hosting: on-prem
+    owner: equipe-paiements
+    criticality: critical
+    allowed_admins: [postgres]
+
+  - id: pg-prod-02
+    engine: postgresql
+    host: 127.0.0.1
+    port: 5434
+    service: postgres
+    environment: production
+    hosting: on-prem
+    owner: equipe-credit
+    criticality: critical
+    allowed_admins: [postgres]
+
+  - id: pg-recette-01
+    engine: postgresql
+    host: 127.0.0.1
+    port: 5435
+    service: postgres
+    environment: recette
+    hosting: on-prem
+    owner: ""              # propriétaire non renseigné : la corrélation doit le signaler
+    criticality: standard
+    allowed_admins: [postgres]
+
+  - id: pg-cloud-01
+    engine: postgresql
+    host: db.cloud.example.internal
+    port: 5432
+    service: postgres
+    environment: production
+    hosting: cloud         # native du cloud public retenu : hors périmètre de la mission
+    owner: equipe-data
+    criticality: standard
+    allowed_admins: [postgres]

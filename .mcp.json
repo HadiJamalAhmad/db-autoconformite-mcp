@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "db-autoconformite": {
+      "command": "uv",
+      "args": ["run", "db-autoconformite-mcp"],
+      "env": {
+        "AUTOCONF_AUDIT_LOG": "audit/mcp-audit.jsonl"
+      }
+    }
+  }
+}

@@ -1,0 +1,64 @@
+# Le parc de démonstration : 4 PostgreSQL légers (~25 Mo de RAM chacun au repos).
+#   pg-prod-01     production, conforme
+#   pg-prod-02     production, dérives volontaires (R01 R02 R03 R04 R06) et sauvegarde trop ancienne
+#   pg-recette-01  recette, sans propriétaire dans la CMDB, délai d'inactivité absent
+#   pg-shadow-01   répond sur le réseau mais n'est pas dans l'inventaire (C01)
+#
+#   cp .env.example .env    # puis : docker compose -f fleet/compose.yaml --env-file .env up -d
+# Oracle n'est pas ici : il tourne dans la CI GitHub (environ 2 Go de RAM).
+
+x-pg: &pg
+  image: postgres:17.6-bookworm
+  mem_limit: 128m
+  environment: &pgenv
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    AUTOCONF_PG_PASSWORD: ${AUTOCONF_PG_PASSWORD:?set AUTOCONF_PG_PASSWORD in .env}
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U postgres"]
+    interval: 2s
+    timeout: 3s
+    retries: 30
+
+services:
+  pg-prod-01:
+    <<: *pg
+    ports: ["127.0.0.1:5433:5432"]
+    volumes:
+      - ./init/10-monitoring-role.sh:/docker-entrypoint-initdb.d/10-monitoring-role.sh:ro
+    command: >
+      postgres -c cluster_name=pg-prod-01 -c shared_buffers=16MB
+      -c log_connections=on -c archive_mode=on -c archive_command=/bin/true
+      -c password_encryption=scram-sha-256 -c idle_in_transaction_session_timeout=600000
+
+  pg-prod-02:
+    <<: *pg
+    ports: ["127.0.0.1:5434:5432"]
+    environment:
+      <<: *pgenv
+      # Drift: md5 authentication and hashing, still accepted by the md5 method.
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_INITDB_ARGS: --auth-host=md5
+    volumes:
+      - ./init/10-monitoring-role.sh:/docker-entrypoint-initdb.d/10-monitoring-role.sh:ro
+      - ./init/20-legacy-admin.sh:/docker-entrypoint-initdb.d/20-legacy-admin.sh:ro
+    command: >
+      postgres -c cluster_name=pg-prod-02 -c shared_buffers=16MB
+      -c log_connections=off -c archive_mode=off
+      -c password_encryption=md5 -c idle_in_transaction_session_timeout=0
+
+  pg-recette-01:
+    <<: *pg
+    ports: ["127.0.0.1:5435:5432"]
+    volumes:
+      - ./init/10-monitoring-role.sh:/docker-entrypoint-initdb.d/10-monitoring-role.sh:ro
+    command: >
+      postgres -c cluster_name=pg-recette-01 -c shared_buffers=16MB
+      -c log_connections=on -c archive_mode=on -c archive_command=/bin/true
+      -c password_encryption=scram-sha-256 -c idle_in_transaction_session_timeout=0
+
+  pg-shadow-01:
+    <<: *pg
+    ports: ["127.0.0.1:5436:5432"]
+    volumes:
+      - ./init/10-monitoring-role.sh:/docker-entrypoint-initdb.d/10-monitoring-role.sh:ro
+    command: postgres -c cluster_name=pg-shadow-01 -c shared_buffers=16MB

@@ -1,0 +1,12 @@
+# Inventaire utilisé par le job Oracle de la CI (Oracle Database Free dans un conteneur).
+instances:
+  - id: ora-ci-01
+    engine: oracle
+    host: 127.0.0.1
+    port: 1521
+    service: FREEPDB1
+    environment: production
+    hosting: on-prem
+    owner: equipe-referentiel
+    criticality: critical
+    allowed_admins: []

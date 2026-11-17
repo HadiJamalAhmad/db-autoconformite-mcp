@@ -1,0 +1,6 @@
+# Plages balayées par la découverte réseau, en plus des points d'accès de l'inventaire.
+# Une base qui répond ici sans être dans l'inventaire est une instance « fantôme » (C01).
+scan:
+  - engine: postgresql
+    host: 127.0.0.1
+    ports: [5433, 5436]
