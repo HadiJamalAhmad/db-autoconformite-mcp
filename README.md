@@ -165,7 +165,8 @@ La ressource `baseline://rules` expose le référentiel.
 ## 7. Méthode et suite
 
 Le travail est découpé en incréments livrables, chacun avec ses tests ; le détail est dans
-[`docs/backlog.md`](docs/backlog.md).
+[`docs/backlog.md`](docs/backlog.md). Côté Oracle : droits minimaux, vues lues et résultats sur une
+vraie base dans [`docs/oracle.md`](docs/oracle.md).
 
 **Prochaines étapes** :
 - playbooks Ansible de configuration standard, exécutés en mode vérification (`--check`) dans la CI ;
