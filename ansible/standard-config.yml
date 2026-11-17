@@ -16,8 +16,10 @@
 
   tasks:
     - name: Paramètres standard du référentiel
-      community.postgresql.postgresql_set:
-        name: "{{ item.key }}"
+      # postgresql_set was removed in community.postgresql 5.0; postgresql_alter_system
+      # replaces it and compares values with their units (ms, min...) normalised.
+      community.postgresql.postgresql_alter_system:
+        param: "{{ item.key }}"
         value: "{{ item.value }}"
         login_host: "{{ pg_host }}"
         login_port: "{{ pg_port }}"
