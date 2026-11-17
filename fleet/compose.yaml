@@ -40,21 +40,20 @@ services:
       POSTGRES_INITDB_ARGS: --auth-host=md5
     volumes:
       - ./init/10-monitoring-role.sh:/docker-entrypoint-initdb.d/10-monitoring-role.sh:ro
-      - ./init/20-legacy-admin.sh:/docker-entrypoint-initdb.d/20-legacy-admin.sh:ro
-    command: >
-      postgres -c cluster_name=pg-prod-02 -c shared_buffers=16MB
-      -c log_connections=off -c archive_mode=off
-      -c password_encryption=md5 -c idle_in_transaction_session_timeout=0
+      # The drifts live in postgresql.auto.conf (ALTER SYSTEM), so Ansible can fix them.
+      - ./init/20-drift-prod-02.sh:/docker-entrypoint-initdb.d/20-drift-prod-02.sh:ro
+    command: postgres -c cluster_name=pg-prod-02 -c shared_buffers=16MB
 
   pg-recette-01:
     <<: *pg
     ports: ["127.0.0.1:5435:5432"]
     volumes:
       - ./init/10-monitoring-role.sh:/docker-entrypoint-initdb.d/10-monitoring-role.sh:ro
+    # idle_in_transaction_session_timeout left at its default, 0: the R06 drift.
     command: >
       postgres -c cluster_name=pg-recette-01 -c shared_buffers=16MB
       -c log_connections=on -c archive_mode=on -c archive_command=/bin/true
-      -c password_encryption=scram-sha-256 -c idle_in_transaction_session_timeout=0
+      -c password_encryption=scram-sha-256
 
   pg-shadow-01:
     <<: *pg

@@ -23,3 +23,4 @@ lint propre, documentation à jour, CI verte.
 | 9 | Playbooks Ansible de configuration standard en mode `--check` dans la CI |
 | 10 | Scénarios d'évaluation de l'agent (outils attendus pour chaque tâche) |
 | 11 | Règles supplémentaires : chiffrement des connexions, comptes par défaut verrouillés |
+| 12 | Règle : paramètre imposé hors de portée d'`ALTER SYSTEM` (`pg_settings.source = 'command line'`). Trouvé par la CI : une correction appliquée par `ALTER SYSTEM` était masquée à chaque redémarrage par la ligne de commande |
