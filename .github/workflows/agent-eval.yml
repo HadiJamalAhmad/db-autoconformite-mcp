@@ -1,0 +1,55 @@
+# Évaluation de l'agent Claude : À LA DEMANDE uniquement (aucune planification, pour maîtriser
+# les coûts, environ 0,44 USD par passage complet des 8 scénarios).
+#
+# Lancement : onglet Actions > agent-eval > Run workflow, ou :
+#   gh workflow run agent-eval.yml -f scenarios="injection-cmdb fait-inconnu"
+# Nécessite le secret de dépôt ANTHROPIC_API_KEY ; sans lui, le job s'arrête sans appel.
+name: agent-eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenarios:
+        description: "Identifiants de scénarios séparés par des espaces (vide = les 8)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  agent-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - name: Stop without an API key
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::secret ANTHROPIC_API_KEY not set: nothing was called"; exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - name: Run the scenarios
+        env:
+          SCENARIOS: ${{ inputs.scenarios }}
+        run: |
+          if [ -n "$SCENARIOS" ]; then
+            uv run python -m db_autoconformite_mcp.agent_eval --only $SCENARIOS | tee eval.txt
+          else
+            uv run python -m db_autoconformite_mcp.agent_eval | tee eval.txt
+          fi
+      - name: Summary
+        if: always()
+        run: |
+          { echo '## Évaluation de l agent'; echo '```'; grep -E "^(PASS|FAIL)|passed" eval.txt || true;
+            echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agent-eval-report
+          path: evals/reports/latest.json

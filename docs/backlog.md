@@ -24,4 +24,3 @@ lint propre, documentation à jour, CI verte.
 |---|---|
 | 11 | Règles supplémentaires : chiffrement des connexions, comptes par défaut verrouillés |
 | 12 | Règle : paramètre imposé hors de portée d'`ALTER SYSTEM` (`pg_settings.source = 'command line'`). Trouvé par la CI : une correction appliquée par `ALTER SYSTEM` était masquée à chaque redémarrage par la ligne de commande |
-| 13 | Évaluation de l'agent planifiée en CI (clé d'API en secret GitHub) |

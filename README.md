@@ -201,6 +201,9 @@ ANTHROPIC_API_KEY=... uv run python -m db_autoconformite_mcp.agent_eval
 uv run python -m db_autoconformite_mcp.agent_eval --regrade evals/reports/*.json   # sans appel
 ```
 
+En CI, l'évaluation est **à la demande uniquement** (workflow `agent-eval`, lancé à la main) :
+aucun coût sans lancement explicite.
+
 Boucle d'agent réelle (`claude-opus-5-5`, API Messages, outils MCP en mémoire sur une copie
 déterministe du parc, variantes « inconnu » et « injection »).
 
@@ -236,7 +239,6 @@ Le travail est découpé en incréments livrables, chacun avec ses tests ; le d�
 vraie base dans [`docs/oracle.md`](docs/oracle.md).
 
 **Prochaines étapes** :
-- l'évaluation de l'agent en CI (planifiée, avec la clé d'API en secret) ;
 - règles supplémentaires : paramètre imposé hors de portée d'`ALTER SYSTEM`, chiffrement des
   connexions, comptes par défaut verrouillés.
 
