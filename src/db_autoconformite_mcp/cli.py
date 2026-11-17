@@ -5,6 +5,7 @@
     uv run fleetctl check [--instance ID] [--format text|json|markdown] [--fail-on high]
     uv run fleetctl correlate [--fail-on high]
     uv run fleetctl plan ID
+    uv run fleetctl ansible-export
 
 Exit code 1 when a failing finding reaches --fail-on: that is what makes the CI job a
 compliance gate (auto-conformité) rather than a report nobody reads.
@@ -65,6 +66,7 @@ def main(argv: list[str] | None = None) -> int:
     k.add_argument("--fail-on", choices=[s.value for s in Severity])
     r = sub.add_parser("plan", help="proposed remediation plan for one instance")
     r.add_argument("instance")
+    sub.add_parser("ansible-export", help="baseline + inventory -> ansible/generated/")
     args = p.parse_args(argv)
 
     fleet = Fleet()
@@ -92,6 +94,11 @@ def main(argv: list[str] | None = None) -> int:
         return _gate(findings, args.fail_on)
     if args.cmd == "plan":
         print(fleet.remediation_plan(args.instance))
+        return 0
+    if args.cmd == "ansible-export":
+        from db_autoconformite_mcp.ansible_export import write
+
+        print(write(fleet.inventory, fleet.rules))
         return 0
     return 2
 

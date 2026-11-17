@@ -1,0 +1,67 @@
+# Configuration standard du parc PostgreSQL, à partir du référentiel exporté :
+#   uv run fleetctl ansible-export
+#   ansible-playbook -i ansible/generated/inventory.yml ansible/standard-config.yml --check --diff
+#
+# En mode --check, le playbook dit ce qu'il changerait, sans rien changer.
+# Il utilise un compte d'administration (variable POSTGRES_PASSWORD) : la correction est un
+# acte humain et outillé, séparé de l'agent IA, qui reste en lecture seule.
+# Dans ce dépôt, l'application réelle n'a lieu que sur le parc jetable de la CI.
+
+- name: Configuration standard du parc PostgreSQL
+  hosts: postgresql
+  gather_facts: false
+  vars:
+    pg_admin_user: postgres
+    pg_admin_password: "{{ lookup('ansible.builtin.env', 'POSTGRES_PASSWORD') }}"
+
+  tasks:
+    - name: Paramètres standard du référentiel
+      community.postgresql.postgresql_set:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        login_host: "{{ pg_host }}"
+        login_port: "{{ pg_port }}"
+        login_user: "{{ pg_admin_user }}"
+        login_password: "{{ pg_admin_password }}"
+        login_db: "{{ pg_db }}"
+      loop: "{{ pg_standard_settings | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      register: standard_settings
+
+    - name: Lire les rôles existants
+      community.postgresql.postgresql_info:
+        filter: roles
+        login_host: "{{ pg_host }}"
+        login_port: "{{ pg_port }}"
+        login_user: "{{ pg_admin_user }}"
+        login_password: "{{ pg_admin_password }}"
+        login_db: "{{ pg_db }}"
+      register: pg_info
+      check_mode: false  # read-only: runs in --check too, the next task needs it
+
+    - name: Retirer SUPERUSER aux rôles que la CMDB n'autorise pas
+      community.postgresql.postgresql_user:
+        name: "{{ item.key }}"
+        role_attr_flags: NOSUPERUSER
+        login_host: "{{ pg_host }}"
+        login_port: "{{ pg_port }}"
+        login_user: "{{ pg_admin_user }}"
+        login_password: "{{ pg_admin_password }}"
+        login_db: "{{ pg_db }}"
+      loop: >-
+        {{ pg_info.roles | dict2items | selectattr('value.superuser')
+           | rejectattr('key', 'in', pg_allowed_admins) | list }}
+      loop_control:
+        label: "{{ item.key }}"
+      register: revoked
+
+    - name: Signaler les paramètres qui demandent un redémarrage
+      ansible.builtin.debug:
+        msg: >-
+          Redémarrage requis pour :
+          {{ standard_settings.results | selectattr('restart_required', 'defined')
+             | selectattr('restart_required') | map(attribute='item.key') | list }}
+      when: >-
+        standard_settings.results | selectattr('restart_required', 'defined')
+        | selectattr('restart_required') | list | length > 0

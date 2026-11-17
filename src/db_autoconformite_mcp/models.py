@@ -83,6 +83,8 @@ class Rule:
     rationale: str = ""
     source: dict[str, str] = field(default_factory=dict)  # engine -> where the fact comes from
     remediation: dict[str, str] = field(default_factory=dict)  # engine -> proposed fix
+    # engine -> {parameter: standard value}, exported to Ansible (fleetctl ansible-export)
+    standard: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 @dataclass

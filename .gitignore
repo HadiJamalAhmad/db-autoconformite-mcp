@@ -7,3 +7,4 @@ __pycache__/
 audit/
 fleet/backups.jsonl
 reports/
+ansible/generated/

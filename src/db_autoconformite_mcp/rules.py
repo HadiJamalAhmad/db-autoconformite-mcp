@@ -26,7 +26,9 @@ def load_rules(path: Path = DEFAULT_BASELINE) -> list[Rule]:
             fact=r["fact"], expected=str(r.get("expected", "")),
             max_age_hours=dict(r.get("max_age_hours", {})),
             rationale=r.get("rationale", "").strip(),
-            source=dict(r.get("source", {})), remediation=dict(r.get("remediation", {}))))
+            source=dict(r.get("source", {})), remediation=dict(r.get("remediation", {})),
+            standard={engine: {k: str(v) for k, v in params.items()}
+                      for engine, params in r.get("standard", {}).items()}))
     ids = [r.id for r in rules]
     if len(ids) != len(set(ids)):
         raise ValueError(f"duplicate rule ids in {path}")

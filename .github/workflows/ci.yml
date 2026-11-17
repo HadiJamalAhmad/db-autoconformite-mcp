@@ -87,6 +87,67 @@ jobs:
             report.md
             correlation.txt
 
+  ansible:
+    # Detect -> fix -> verify, on this run's throwaway fleet only:
+    #   1. the standard-config playbook in --check mode on the real fleet;
+    #   2. cross-check: Ansible's would-be changes must match fleetctl's failing rules;
+    #   3. apply it for real on pg-prod-02, restart, and check it is compliant again.
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - name: Random credentials for this run only
+        run: |
+          for name in POSTGRES_PASSWORD AUTOCONF_PG_PASSWORD; do
+            value=$(openssl rand -hex 16)
+            echo "::add-mask::$value"
+            printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
+          done
+      - run: docker compose -f fleet/compose.yaml up -d --wait
+      - run: uv run python fleet/seed_backups.py
+      - name: Ansible and the PostgreSQL collection (pinned)
+        run: |
+          uv tool install ansible-core==2.20.11 --with psycopg2-binary==2.9.13 --python 3.12
+          ansible-galaxy collection install community.postgresql:==5.1.0
+          echo "ANSIBLE_PY=$(uv tool dir)/ansible-core/bin/python" >> "$GITHUB_ENV"
+      - run: uv run fleetctl ansible-export
+      - name: 1. Playbook in check mode
+        run: |
+          ANSIBLE_STDOUT_CALLBACK=ansible.builtin.json ansible-playbook \
+            -i ansible/generated/inventory.yml ansible/standard-config.yml --check \
+            -e ansible_python_interpreter="$ANSIBLE_PY" > ansible-check.json
+      - name: 2. Cross-check Ansible against fleetctl
+        run: |
+          uv run fleetctl check --format json > fleet-before.json || true
+          uv run python -m db_autoconformite_mcp.ansible_crosscheck ansible-check.json fleet-before.json \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: 3. Apply on pg-prod-02 (throwaway CI fleet), restart, verify
+        run: |
+          ansible-playbook -i ansible/generated/inventory.yml ansible/standard-config.yml \
+            --limit pg-prod-02 -e ansible_python_interpreter="$ANSIBLE_PY"
+          docker compose -f fleet/compose.yaml restart pg-prod-02
+          docker compose -f fleet/compose.yaml up -d --wait
+          uv run fleetctl check --instance pg-prod-02 --format json > fleet-after.json || true
+          uv run python - <<'EOF'
+          import json
+          findings = json.load(open("fleet-after.json"))["pg-prod-02"]
+          failing = sorted(f["rule_id"] for f in findings if f["status"] != "pass")
+          print("pg-prod-02 after remediation, still failing:", failing)
+          assert failing == ["R05"], failing  # only the backup, which is not a setting
+          EOF
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ansible-reports
+          path: |
+            ansible-check.json
+            fleet-before.json
+            fleet-after.json
+
   oracle:
     needs: test
     runs-on: ubuntu-latest

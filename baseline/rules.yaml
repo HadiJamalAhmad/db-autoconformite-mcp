@@ -3,6 +3,8 @@
 # Chaque règle vérifie un fait neutre (indépendant du moteur) produit par les collecteurs.
 # `source` dit où le fait est lu pour chaque moteur ; `remediation` propose la correction,
 # qui n'est JAMAIS appliquée automatiquement : elle est remise à un humain pour validation.
+# `standard` donne la configuration de référence, exportée telle quelle vers Ansible
+# (`fleetctl ansible-export`) : le contrôle et la correction lisent la même source.
 
 rules:
   - id: R01
@@ -20,6 +22,8 @@ rules:
     remediation:
       postgresql: "ALTER SYSTEM SET log_connections = 'on'; SELECT pg_reload_conf();"
       oracle: "AUDIT POLICY ORA_LOGON_FAILURES; -- ou une politique qui audite LOGON"
+    standard:
+      postgresql: {log_connections: "on"}
 
   - id: R02
     title: Archivage des journaux de transactions
@@ -36,6 +40,8 @@ rules:
     remediation:
       postgresql: "ALTER SYSTEM SET archive_mode = 'on'; -- redémarrage requis, définir archive_command"
       oracle: "SHUTDOWN IMMEDIATE; STARTUP MOUNT; ALTER DATABASE ARCHIVELOG; ALTER DATABASE OPEN; -- fenêtre de maintenance requise"
+    standard:
+      postgresql: {archive_mode: "on"}
 
   - id: R03
     title: Hachage robuste des mots de passe
@@ -52,6 +58,8 @@ rules:
     remediation:
       postgresql: "ALTER SYSTEM SET password_encryption = 'scram-sha-256'; SELECT pg_reload_conf(); -- puis réinitialiser les mots de passe"
       oracle: "-- sqlnet.ora : SQLNET.ALLOWED_LOGON_VERSION_SERVER = 12a ; puis réinitialiser les mots de passe concernés"
+    standard:
+      postgresql: {password_encryption: scram-sha-256}
 
   - id: R04
     title: Comptes à privilèges maîtrisés
@@ -101,3 +109,5 @@ rules:
     remediation:
       postgresql: "ALTER SYSTEM SET idle_in_transaction_session_timeout = '10min'; SELECT pg_reload_conf();"
       oracle: "ALTER PROFILE DEFAULT LIMIT IDLE_TIME 30;"
+    standard:
+      postgresql: {idle_in_transaction_session_timeout: "600000"}  # 10 min, en ms comme pg_settings
