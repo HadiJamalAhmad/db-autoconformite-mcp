@@ -218,6 +218,38 @@ L'agent écrivait « rien n'a été exécuté », citait l'injection pour la dé
 Chaque correction du correcteur est fixée par la transcription réelle qui l'a révélée
 (`tests/test_agent_eval.py`), et une affirmation réelle échoue toujours.
 
+### Le même agent sur Google ADK, avec Gemini sur Vertex AI
+
+Le serveur MCP ne dépend d'aucun fournisseur d'IA. Preuve : le même agent, construit avec
+**Google ADK** (Agent Development Kit) et **Gemini sur Vertex AI**, sur les **mêmes outils**,
+le **même prompt**, les **mêmes skills**, notés par les **mêmes règles**.
+
+- `src/db_autoconformite_mcp/adk_agent.py` : l'agent ADK ; ses outils viennent du serveur MCP
+  par le `McpToolset` d'ADK (stdio), aucun outil n'est réécrit, le garde et le journal restent
+  devant chaque appel.
+- `src/db_autoconformite_mcp/demo_server.py` : le serveur sur le parc de démonstration, en
+  commande stdio (ADK lance les serveurs MCP comme sous-processus).
+- `src/db_autoconformite_mcp/adk_eval.py` : les 8 scénarios, notés par `agent_eval.grade` ;
+  chaque passage vérifie en plus que **chaque appel d'outil figure au journal d'audit**.
+- `tests/test_adk_agent.py` (hors ligne, en CI) : le vrai runner ADK et le vrai serveur MCP,
+  avec un modèle scripté à la place de Gemini. ADK voit exactement les 6 outils, reçoit les
+  vraies données du parc, chaque appel est journalisé (refus compris), et une réponse qui
+  obéit à l'injection est notée en échec.
+
+```bash
+uv sync --extra adk
+gcloud auth application-default login
+GOOGLE_GENAI_USE_VERTEXAI=TRUE GOOGLE_CLOUD_PROJECT=<projet> GOOGLE_CLOUD_LOCATION=global \
+  uv run python -m db_autoconformite_mcp.adk_eval            # rapport : evals/reports/adk-latest.json
+```
+
+En CI : workflow `adk-eval`, **à la demande uniquement**, connecté à Google Cloud par
+Workload Identity Federation (aucune clé stockée) ; mise en place : `docs/adk-vertex.md`.
+
+Ce que les tests hors ligne prouvent : la plomberie (ADK, MCP, garde, journal, notation). Ce
+qu'ils ne prouvent pas : le comportement de Gemini face aux scénarios. Seul le passage réel
+le mesure ; ses résultats seront publiés ici, échecs compris.
+
 ---
 
 ## 8. Qualité et intégration continue

@@ -1,0 +1,73 @@
+# Évaluation de l'agent ADK (Gemini sur Vertex AI) : À LA DEMANDE uniquement, comme agent-eval.
+# Mêmes 8 scénarios, mêmes règles de notation que l'agent Claude.
+#
+# Lancement : onglet Actions > adk-eval > Run workflow, ou :
+#   gh workflow run adk-eval.yml -f scenarios="injection-cmdb fait-inconnu"
+#
+# Connexion à Google Cloud SANS clé stockée : Workload Identity Federation (docs/adk-vertex.md).
+# Variables de dépôt nécessaires : GCP_PROJECT, GCP_WIF_PROVIDER, GCP_SERVICE_ACCOUNT ;
+# sans elles, le job s'arrête sans aucun appel.
+name: adk-eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenarios:
+        description: "Identifiants de scénarios séparés par des espaces (vide = les 8)"
+        required: false
+        default: ""
+      model:
+        description: "Modèle Gemini sur Vertex AI"
+        required: false
+        default: "gemini-3.5-flash"
+
+permissions:
+  contents: read
+  id-token: write  # the OIDC token exchanged for short-lived Google credentials
+
+jobs:
+  adk-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOOGLE_GENAI_USE_VERTEXAI: "TRUE"
+      GOOGLE_CLOUD_PROJECT: ${{ vars.GCP_PROJECT }}
+      GOOGLE_CLOUD_LOCATION: global
+    steps:
+      - name: Stop without the Google Cloud settings
+        env:
+          PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$GOOGLE_CLOUD_PROJECT" ] || [ -z "$PROVIDER" ] || [ -z "$ACCOUNT" ]; then
+            echo "::error::GCP_PROJECT, GCP_WIF_PROVIDER or GCP_SERVICE_ACCOUNT not set: nothing was called"; exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen --extra adk
+      - name: Run the scenarios
+        env:
+          SCENARIOS: ${{ inputs.scenarios }}
+          MODEL: ${{ inputs.model }}
+        run: |
+          if [ -n "$SCENARIOS" ]; then
+            uv run python -m db_autoconformite_mcp.adk_eval --model "$MODEL" --only $SCENARIOS | tee eval.txt
+          else
+            uv run python -m db_autoconformite_mcp.adk_eval --model "$MODEL" | tee eval.txt
+          fi
+      - name: Summary
+        if: always()
+        run: |
+          { echo '## Évaluation de l agent ADK (Gemini)'; echo '```'; grep -E "^(PASS|FAIL)|passed" eval.txt || true;
+            echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: adk-eval-report
+          path: evals/reports/adk-latest.json

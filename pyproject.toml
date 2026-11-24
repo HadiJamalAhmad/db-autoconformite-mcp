@@ -19,6 +19,11 @@ dependencies = [
 db-autoconformite-mcp = "db_autoconformite_mcp.server:main"
 fleetctl = "db_autoconformite_mcp.cli:main"
 
+[project.optional-dependencies]
+adk = [
+    "google-adk>=2.15.0",
+]
+
 [build-system]
 requires = ["uv_build>=0.11.26,<0.12.0"]
 build-backend = "uv_build"
